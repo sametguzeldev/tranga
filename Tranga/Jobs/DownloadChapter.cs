@@ -31,10 +31,18 @@ public class DownloadChapter : Job
     {
         Task downloadTask = new(delegate
         {
+            // First check if chapter is already downloaded to avoid unnecessary processing
+            if (chapter.CheckChapterIsDownloaded())
+            {
+                Log($"Chapter {chapter} is already downloaded. Skipping download.");
+                progressToken.Complete();
+                return;
+            }
+            
             mangaConnector.CopyCoverFromCacheToDownloadLocation(chapter.parentManga);
             HttpStatusCode success = mangaConnector.DownloadChapter(chapter, this.progressToken);
             chapter.parentManga.UpdateLatestDownloadedChapter(chapter);
-            if (success == HttpStatusCode.OK)
+            if (success == HttpStatusCode.OK || success == HttpStatusCode.Created)
             {
                 UpdateLibraries();
                 SendNotifications("Chapter downloaded", $"{chapter.parentManga.sortName} - {chapter.chapterNumber}", true);

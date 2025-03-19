@@ -60,8 +60,27 @@ public abstract class MangaConnector : GlobalBase
             return Array.Empty<Chapter>();
         
         Log($"Checking for duplicates {manga}");
-        List<Chapter> newChaptersList = allChapters.Where(nChapter => nChapter.chapterNumber >= manga.ignoreChaptersBelow
-                                                                      && !nChapter.CheckChapterIsDownloaded()).ToList();
+        
+        // Create a list to store chapters that are truly new
+        List<Chapter> newChaptersList = new List<Chapter>();
+        
+        // Check each chapter one by one to be thorough
+        foreach (var chapter in allChapters)
+        {
+            // Skip chapters that are below ignore threshold
+            if (chapter.chapterNumber < manga.ignoreChaptersBelow)
+                continue;
+                
+            // Do a thorough check if the chapter is already downloaded
+            bool isAlreadyDownloaded = chapter.CheckChapterIsDownloaded();
+            
+            if (!isAlreadyDownloaded)
+            {
+                // Chapter is not downloaded, add it to the list
+                newChaptersList.Add(chapter);
+            }
+        }
+        
         Log($"{newChaptersList.Count} new chapters. {manga}");
         try
         {
@@ -146,9 +165,20 @@ public abstract class MangaConnector : GlobalBase
         
         if (progressToken?.cancellationRequested ?? false)
             return HttpStatusCode.RequestTimeout;
+        
         Log($"Downloading Images for {saveArchiveFilePath}");
+        
+        // Additional check to ensure we don't re-download chapters
+        if (chapter.CheckChapterIsDownloaded())
+        {
+            Log($"Chapter already downloaded for {saveArchiveFilePath} (verified by CheckChapterIsDownloaded).");
+            progressToken?.Complete();
+            return HttpStatusCode.Created;
+        }
+        
         if (progressToken is not null)
             progressToken.increments += imageUrls.Length;
+            
         //Check if Publication Directory already exists
         string directoryPath = Path.GetDirectoryName(saveArchiveFilePath)!;
         if (!Directory.Exists(directoryPath))
@@ -160,6 +190,12 @@ public abstract class MangaConnector : GlobalBase
 
         if (File.Exists(saveArchiveFilePath)) //Don't download twice.
         {
+            Log($"Chapter already downloaded for {saveArchiveFilePath} (file exists check).");
+            
+            // Make sure to create a chapter marker if it doesn't exist
+            // This helps future duplicate detection
+            chapter.CreateChapterMarker(saveArchiveFilePath);
+            
             progressToken?.Complete();
             return HttpStatusCode.Created;
         }
@@ -202,7 +238,7 @@ public abstract class MangaConnector : GlobalBase
         Log($"Creating archive {saveArchiveFilePath}");
         //ZIP-it and ship-it
         ZipFile.CreateFromDirectory(tempFolder, saveArchiveFilePath);
-        chapter.CreateChapterMarker();
+        chapter.CreateChapterMarker(saveArchiveFilePath);
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
             File.SetUnixFileMode(saveArchiveFilePath, UserRead | UserWrite | UserExecute | GroupRead | GroupWrite | GroupExecute | OtherRead | OtherExecute);
         Directory.Delete(tempFolder, true); //Cleanup

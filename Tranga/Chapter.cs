@@ -83,51 +83,150 @@ public readonly struct Chapter : IComparable
         string mangaDirectory = Path.Join(TrangaSettings.downloadLocation, parentManga.folderName);
         if (!Directory.Exists(mangaDirectory))
             return false;
+            
+        string fullExpectedPath = Path.Join(mangaDirectory, $"{parentManga.folderName} - {this.fileName}.cbz");
+        
+        // Direct path check - fastest method
+        if (File.Exists(fullExpectedPath))
+        {
+            return true;
+        }
+        
         FileInfo? mangaArchive = null;
         string markerPath = Path.Join(mangaDirectory, $".{id}");
         if (this.id is not null && File.Exists(markerPath))
         {
             if(File.Exists(File.ReadAllText(markerPath)))
+            {
                 mangaArchive = new FileInfo(File.ReadAllText(markerPath));
+            }
             else
+            {
                 File.Delete(markerPath);
+            }
         }
         
+        // If we couldn't find it by marker, search by filename pattern
         if(mangaArchive is null)
         {
             FileInfo[] archives = new DirectoryInfo(mangaDirectory).GetFiles("*.cbz");
-            Regex volChRex = new(@"(?:Vol(?:ume)?\.([0-9]+)\D*)?Ch(?:apter)?\.([0-9]+(?:\.[0-9]+)*)(?: - (.*))?.cbz");
-
-            Chapter t = this;
-            mangaArchive = archives.FirstOrDefault(archive =>
+            
+            // Check for duplicated chapter by volume and chapter number first - STRICT MATCHING ONLY
+            foreach (FileInfo archive in archives)
             {
-                Match m = volChRex.Match(archive.Name);
-                /*
-                 * 1. If the volumeNumber is not present in the filename, it is not checked.
-                 * 2. Check the chapterNumber in the chapter against the one in the filename.
-                 * 3. The chpaterName has to either be absent both in the chapter and the filename or match.
-                 */
-                return (!m.Groups[1].Success || m.Groups[1].Value == t.volumeNumber.ToString(GlobalBase.numberFormatDecimalPoint)) &&
-                       m.Groups[2].Value == t.chapterNumber.ToString(GlobalBase.numberFormatDecimalPoint) &&
-                       ((!m.Groups[3].Success && string.IsNullOrEmpty(t.name)) || m.Groups[3].Value == t.name);
-            });
+                // First, try to find files with exact volume and chapter numbers
+                // This handles cases where the name might be completely different or truncated
+                string chapterNumStr = GetFormattedChapterNumber();
+                string volNumStr = GetFormattedVolumeNumber();
+                
+                // Look for the chapter and volume numbers in the filename - STRICT MATCHING
+                // We need to make sure we match the exact chapter, not just a substring
+                // For example, "Ch.2" should not match "Ch.23"
+                string fileNameWithoutExtension = Path.GetFileNameWithoutExtension(archive.Name);
+                
+                // Format the patterns we're looking for
+                string chapterPattern = $"Ch.{chapterNumStr}";
+                
+                // Add markers to ensure we match exact numbers with proper boundaries
+                if ((fileNameWithoutExtension.Contains($"Vol.{volNumStr} {chapterPattern} ") || 
+                     fileNameWithoutExtension.Contains($"Vol.{volNumStr} {chapterPattern}-") ||
+                     fileNameWithoutExtension.Contains($"Vol.{volNumStr} {chapterPattern}.") ||
+                     fileNameWithoutExtension.EndsWith($"Vol.{volNumStr} {chapterPattern}")) &&
+                    // Additional check to prevent Ch.X.Y matching as Ch.X
+                    !(chapterNumStr.IndexOf('.') == -1 && 
+                      Regex.IsMatch(fileNameWithoutExtension, $@"Ch\.{chapterNumStr}\.[0-9]+")))
+                {
+                    // Found a matching file by volume and chapter number
+                    mangaArchive = archive;
+                    break;
+                }
+            }
+            
+            // If still not found, use the more detailed regex approach
+            if (mangaArchive == null)
+            {
+                // More flexible regex to match different filename patterns
+                // 1. Standard format with manga name: MangaName - Vol.X Ch.Y[ - ChapterName].cbz
+                // 2. Direct format: Vol.X Ch.Y[ - ChapterName].cbz
+                // This pattern carefully handles decimal chapter numbers like Ch.75.5
+                Regex volChRex = new(@".*(Vol(?:ume)?\.([0-9]+)\D*Ch(?:apter)?\.([0-9]+(?:\.[0-9]+)?)(?: - (.*))?)\.cbz");
+
+                Chapter t = this;
+                
+                // Get current chapter's expected filename (without path)
+                string expectedFilename = $"{parentManga.folderName} - {this.fileName}.cbz";
+                
+                // Try to find a matching file
+                mangaArchive = archives.FirstOrDefault(archive => 
+                {
+                    // First try exact filename match (fastest)
+                    if (Path.GetFileName(archive.FullName).Equals(expectedFilename, StringComparison.OrdinalIgnoreCase))
+                        return true;
+                    
+                    // If no exact match, try regex pattern matching
+                    Match m = volChRex.Match(archive.Name);
+                    if (!m.Success) 
+                        return false;
+                    
+                    // Extract values from regex match
+                    string fileVolumeNum = m.Groups[2].Value;
+                    string fileChapterNum = m.Groups[3].Value;
+                    string? fileChapterName = m.Groups[4].Success ? m.Groups[4].Value : null;
+                    
+                    // Check volume match
+                    bool volumeMatches = string.IsNullOrEmpty(fileVolumeNum) || 
+                                         fileVolumeNum == t.volumeNumber.ToString(GlobalBase.numberFormatDecimalPoint);
+                    
+                    // Check chapter match - must be exact, not partial
+                    bool chapterMatches = fileChapterNum == t.chapterNumber.ToString(GlobalBase.numberFormatDecimalPoint);
+                    
+                    // Additional safety: If there's a mismatch, check if it's due to parsing decimal vs. integer
+                    if (!chapterMatches && 
+                        float.TryParse(fileChapterNum, GlobalBase.numberFormatDecimalPoint, out float fileChNum) && 
+                        fileChNum == t.chapterNumber)
+                    {
+                        chapterMatches = true;
+                    }
+                    
+                    // Name matching can be more flexible
+                    bool nameMatches = (fileChapterName == null && string.IsNullOrEmpty(t.name)) || 
+                                       (fileChapterName != null && t.name != null && (
+                                           // Exact match
+                                           fileChapterName == t.name || 
+                                           // Prefix match (handles truncation at the end)
+                                           t.name.StartsWith(fileChapterName) ||
+                                           // Reversed prefix match (filename truncated)
+                                           fileChapterName.StartsWith(t.name) ||
+                                           // First few words match (handles partial word truncation)
+                                           (t.name.Split(' ').Length > 0 && fileChapterName.Split(' ').Length > 0 &&
+                                            t.name.Split(' ')[0] == fileChapterName.Split(' ')[0])
+                                       ));
+                    
+                    return volumeMatches && chapterMatches && nameMatches;
+                });
+            }
         }
         
-        string correctPath = GetArchiveFilePath();
-        if(mangaArchive is not null && mangaArchive.FullName != correctPath)
-            mangaArchive.MoveTo(correctPath, true);
+        // IMPORTANT: DO NOT move files here, it causes incorrect file renaming!
+        // Just return whether we found a matching archive
         return (mangaArchive is not null);
     }
     
-    public void CreateChapterMarker()
+    public void CreateChapterMarker(string? actualFilePath = null)
     {
         if (this.id is null)
             return;
-        string path = Path.Join(TrangaSettings.downloadLocation, parentManga.folderName, $".{id}");
-        File.WriteAllText(path, GetArchiveFilePath());
-        File.SetAttributes(path, FileAttributes.Hidden);
+            
+        string markerPath = Path.Join(TrangaSettings.downloadLocation, parentManga.folderName, $".{id}");
+        
+        // If an actual file path is provided, use that
+        // Otherwise use the default expected path
+        string pathToWrite = actualFilePath ?? GetArchiveFilePath();
+        
+        File.WriteAllText(markerPath, pathToWrite);
+        File.SetAttributes(markerPath, FileAttributes.Hidden);
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))  
-            File.SetUnixFileMode(path, UserRead | UserWrite | UserExecute | GroupRead | GroupWrite | GroupExecute | OtherRead | OtherExecute);
+            File.SetUnixFileMode(markerPath, UserRead | UserWrite | UserExecute | GroupRead | GroupWrite | GroupExecute | OtherRead | OtherExecute);
     }
     
     /// <summary>
@@ -155,5 +254,23 @@ public readonly struct Chapter : IComparable
             new XElement("Number", this.chapterNumber)
         );
         return comicInfo.ToString();
+    }
+    
+    /// <summary>
+    /// Returns the chapter number as a string formatted for display
+    /// </summary>
+    /// <returns>Formatted chapter number</returns>
+    internal string GetFormattedChapterNumber()
+    {
+        return chapterNumber.ToString(GlobalBase.numberFormatDecimalPoint);
+    }
+    
+    /// <summary>
+    /// Returns the volume number as a string formatted for display
+    /// </summary>
+    /// <returns>Formatted volume number</returns>
+    internal string GetFormattedVolumeNumber()
+    {
+        return volumeNumber.ToString(GlobalBase.numberFormatDecimalPoint);
     }
 }
