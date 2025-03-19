@@ -5,17 +5,51 @@ services:
       dockerfile: Dockerfile
       context: .
     container_name: tranga-api
+    networks:
+      - proxy
     volumes:
-      - ./Manga:/Manga
+      - /home/solaris/komga/mangas:/Manga
       - ./settings:/usr/share/tranga-api
     ports:
       - "6531:6531"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.trangapi.entrypoints=http"
+      - "traefik.http.routers.trangapi.rule=Host(`trangapi.cthraxxi.com`)"
+      - "traefik.http.middlewares.trangapi-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.routers.trangapi.middlewares=trangapi-https-redirect"
+      - "traefik.http.routers.trangapi-secure.entrypoints=https"
+      - "traefik.http.routers.trangapi-secure.rule=Host(`trangapi.cthraxxi.com`)"
+      - "traefik.http.routers.trangapi-secure.tls=true"
+      - "traefik.http.routers.trangapi-secure.service=trangapi"
+      - "traefik.http.services.trangapi.loadbalancer.server.port=6531"
+      - "traefik.docker.network=proxy"
+      - "com.centurylinklabs.watchtower.enable=false"
     restart: unless-stopped
   tranga-website:
-    image: glax/tranga-website:latest
+    image: tranga-website:latest
     container_name: tranga-website
+    networks:
+      - proxy
     ports:
       - "9555:80"
-    depends_on: 
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.tranga.entrypoints=http"
+      - "traefik.http.routers.tranga.rule=Host(`tranga.cthraxxi.com`)"
+      - "traefik.http.middlewares.tranga-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.routers.tranga.middlewares=tranga-https-redirect"
+      - "traefik.http.routers.tranga-secure.entrypoints=https"
+      - "traefik.http.routers.tranga-secure.rule=Host(`tranga.cthraxxi.com`)"
+      - "traefik.http.routers.tranga-secure.tls=true"
+      - "traefik.http.routers.tranga-secure.service=tranga"
+      - "traefik.http.services.tranga.loadbalancer.server.port=80"
+      - "traefik.docker.network=proxy"
+      - "com.centurylinklabs.watchtower.enable=false"
+    depends_on:
       - tranga-api
     restart: unless-stopped
+
+networks:
+  proxy:
+    external: true

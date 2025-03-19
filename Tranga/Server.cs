@@ -499,13 +499,12 @@ public class Server : GlobalBase
                 }else if (notificationConnectorType is NotificationConnector.NotificationConnectorType.Ntfy)
                 {
                     if (!requestVariables.TryGetValue("ntfyUrl", out string? ntfyUrl) ||
-                        !requestVariables.TryGetValue("ntfyUser", out string? ntfyUser)||
-                        !requestVariables.TryGetValue("ntfyPass", out string? ntfyPass))
+                        !requestVariables.TryGetValue("ntfyAuth", out string? ntfyAuth))
                     {
                         SendResponse(HttpStatusCode.BadRequest, response);
                         break;
                     }
-                    AddNotificationConnector(new Ntfy(this, ntfyUrl, ntfyUser, ntfyPass, null));
+                    AddNotificationConnector(new Ntfy(this, ntfyUrl, "tranga", ntfyAuth));
                     SendResponse(HttpStatusCode.Accepted, response);
                 }
                 else
@@ -542,13 +541,12 @@ public class Server : GlobalBase
                 }else if (notificationConnectorType is NotificationConnector.NotificationConnectorType.Ntfy)
                 {
                     if (!requestVariables.TryGetValue("ntfyUrl", out string? ntfyUrl) ||
-                        !requestVariables.TryGetValue("ntfyUser", out string? ntfyUser)||
-                        !requestVariables.TryGetValue("ntfyPass", out string? ntfyPass))
+                        !requestVariables.TryGetValue("ntfyAuth", out string? ntfyAuth))
                     {
                         SendResponse(HttpStatusCode.BadRequest, response);
                         break;
                     }
-                    notificationConnector = new Ntfy(this, ntfyUrl, ntfyUser, ntfyPass, null);
+                    notificationConnector = new Ntfy(this, ntfyUrl, "tranga", ntfyAuth);
                 }
                 else
                 {

@@ -58,7 +58,8 @@ public class Ntfy : NotificationConnector
     {
         Log($"Sending notification: {title} - {notificationText}");
         MessageData message = new(title, topic, notificationText);
-        HttpRequestMessage request = new(HttpMethod.Post, $"{this.endpoint}?auth={this.auth}");
+        HttpRequestMessage request = new(HttpMethod.Post, $"{endpoint}");
+        request.Headers.Add("Authorization", $"{auth}");
         request.Content = new StringContent(JsonConvert.SerializeObject(message, Formatting.None), Encoding.UTF8, "application/json");
         HttpResponseMessage response = _client.Send(request);
         if (!response.IsSuccessStatusCode)

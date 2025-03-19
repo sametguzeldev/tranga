@@ -17,12 +17,12 @@ WORKDIR /src
 
 COPY Tranga.sln /src
 COPY CLI/CLI.csproj /src/CLI/CLI.csproj
-COPY Logging/Logging.csproj /src/Logging/Logging.csproj 
+COPY Logging/Logging.csproj /src/Logging/Logging.csproj
 COPY Tranga/Tranga.csproj /src/Tranga/Tranga.csproj
 RUN dotnet restore /src/Tranga.sln
 
 COPY . /src/
-RUN dotnet publish -c Release --property:OutputPath=/publish -maxcpucount:1 
+RUN dotnet publish -c Release --property:OutputPath=/publish -maxcpucount:1
 
 FROM --platform=$TARGETPLATFORM base AS runtime
 EXPOSE 6531
@@ -33,12 +33,13 @@ RUN groupadd -g $GID -o $UNAME \
   && useradd -m -u $UID -g $GID -o -s /bin/bash $UNAME \
   && mkdir /usr/share/tranga-api \
   && mkdir /Manga \
-  && chown 1000:1000 /usr/share/tranga-api \
-  && chown 1000:1000 /Manga 
+  && chown $UID:$GID /usr/share/tranga-api \
+  && chown $UID:$GID /Manga
 USER $UNAME
 
 WORKDIR /publish
-COPY --chown=1000:1000 --from=build-env /publish .
-USER 0
+COPY --chown=$UID:$GID --from=build-env /publish .
+
 ENTRYPOINT ["dotnet", "/publish/Tranga.dll"]
 CMD ["-f", "-c", "-l", "/usr/share/tranga-api/logs"]
+
