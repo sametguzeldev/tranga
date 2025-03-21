@@ -1,0 +1,14 @@
+﻿version: '3'
+services:
+  tranga-api-vpn:
+    build:
+      dockerfile: Dockerfile
+      context: .
+    container_name: tranga-api-vpn
+    network_mode: "container:transmission-vpn"
+    volumes:
+      - /home/solaris/komga/pornhwas:/Manga
+      - ./settings_vpn:/usr/share/tranga-api
+    labels:
+      - "com.centurylinklabs.watchtower.enable=false"
+    restart: unless-stopped

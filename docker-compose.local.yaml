@@ -31,6 +31,7 @@ services:
     container_name: tranga-website
     networks:
       - proxy
+      - transmission_vpn_network
     ports:
       - "9555:80"
     labels:
@@ -52,4 +53,6 @@ services:
 
 networks:
   proxy:
+    external: true
+  transmission_vpn_network:
     external: true
