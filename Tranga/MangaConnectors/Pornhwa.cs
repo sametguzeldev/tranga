@@ -152,16 +152,28 @@ public class Pornhwa : MangaConnector
             sortName = System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(sortName);
         }
 
-        // Get alternative titles if available
-        var altTitlesNode = document.DocumentNode.SelectSingleNode("//span[contains(text(), 'Alternative')]/following-sibling::span") ??
-                            document.DocumentNode.SelectSingleNode("//p[contains(text(), 'Alternative')]/following-sibling::p");
+        // Get alternative titles using the exact HTML structure
+        var altTitlesNode = document.DocumentNode.SelectSingleNode("//span[contains(@class, 'rounded-bl-2xl')]/b[contains(text(), 'Alternative Title')]/following-sibling::text()") ??
+                          document.DocumentNode.SelectSingleNode("//span[contains(@class, 'rounded-bl-2xl')]/b[contains(text(), 'Alternative Title')]/parent::span");
 
         if (altTitlesNode != null)
         {
-            string altText = altTitlesNode.InnerText.Trim();
-            string[] alts = altText.Split(',', StringSplitOptions.RemoveEmptyEntries);
-            for (int i = 0; i < alts.Length; i++)
-                altTitles.Add(i.ToString(), alts[i].Trim());
+            string altText = altTitlesNode.InnerText;
+            
+            // If we got the parent span, we need to remove the "Alternative Title : " part
+            if (altText.Contains("Alternative Title"))
+            {
+                int colonIndex = altText.IndexOf(':');
+                if (colonIndex > 0)
+                {
+                    altText = altText.Substring(colonIndex + 1).Trim();
+                }
+            }
+            
+            if (!string.IsNullOrEmpty(altText))
+            {
+                altTitles.Add("0", altText.Trim());
+            }
         }
 
         // Get genres/tags
@@ -177,28 +189,60 @@ public class Pornhwa : MangaConnector
             }
         }
 
-        // Get authors if available
+        // Get authors from the exact HTML structure
         List<string> authors = new();
-        var authorNode = document.DocumentNode.SelectSingleNode("//div[contains(text(), 'Author')]/following-sibling::div") ??
-                         document.DocumentNode.SelectSingleNode("//span[contains(text(), 'Author')]/following-sibling::span");
+        var authorNode = document.DocumentNode.SelectSingleNode("//span[contains(@class, 'rounded-bl-2xl')]/b[contains(text(), 'Author')]/following-sibling::text()") ??
+                        document.DocumentNode.SelectSingleNode("//span[contains(@class, 'rounded-bl-2xl')]/b[contains(text(), 'Author')]/parent::span");
 
         if (authorNode != null)
         {
-            authors.Add(authorNode.InnerText.Trim());
+            string authorText = authorNode.InnerText;
+            
+            // If we got the parent span, we need to remove the "Author(s) : " part
+            if (authorText.Contains("Author"))
+            {
+                int colonIndex = authorText.IndexOf(':');
+                if (colonIndex > 0)
+                {
+                    authorText = authorText.Substring(colonIndex + 1).Trim();
+                }
+            }
+            
+            // Check if author is a placeholder like "-" or empty
+            if (!string.IsNullOrEmpty(authorText) && authorText != "-")
+            {
+                authors.Add(authorText.Trim());
+            }
+            else
+            {
+                authors.Add("Unknown");
+            }
         }
         else
         {
             authors.Add("Unknown");
         }
 
-        // Get status
-        var statusNode = document.DocumentNode.SelectSingleNode("//div[contains(text(), 'Status')]/following-sibling::div") ??
-                         document.DocumentNode.SelectSingleNode("//span[contains(text(), 'Status')]/following-sibling::span");
+        // Get status from the exact HTML structure
+        var statusNode = document.DocumentNode.SelectSingleNode("//span[contains(@class, 'rounded-bl-2xl')]/b[contains(text(), 'Status')]/following-sibling::text()") ??
+                       document.DocumentNode.SelectSingleNode("//span[contains(@class, 'rounded-bl-2xl')]/b[contains(text(), 'Status')]/parent::span");
 
         if (statusNode != null)
         {
-            string status = statusNode.InnerText.Trim().ToLower();
-            releaseStatus = status switch
+            string statusText = statusNode.InnerText;
+            
+            // If we got the parent span, we need to remove the "Status : " part
+            if (statusText.Contains("Status"))
+            {
+                int colonIndex = statusText.IndexOf(':');
+                if (colonIndex > 0)
+                {
+                    statusText = statusText.Substring(colonIndex + 1).Trim();
+                }
+            }
+            
+            statusText = statusText.ToLower().Trim();
+            releaseStatus = statusText switch
             {
                 "ongoing" or "on-going" => Manga.ReleaseStatusByte.Continuing,
                 "completed" => Manga.ReleaseStatusByte.Completed,
@@ -228,11 +272,10 @@ public class Pornhwa : MangaConnector
         // Save cover image to cache
         string coverFileNameInCache = SaveCoverImageToCache(posterUrl, publicationId.Replace('/', '-'), RequestType.MangaCover, BaseUrl);
 
-        // Get description
+        // Get description from the exact HTML structure
         string description = "";
-        var descriptionNode = document.DocumentNode.SelectSingleNode("//div[contains(@class, 'comic-details')]//p[contains(@class, 'text-sm')]") ??
-                             document.DocumentNode.SelectSingleNode("//div[@itemprop='description']") ??
-                             document.DocumentNode.SelectSingleNode("//p[contains(@class, 'text-sm') and not(contains(@class, 'mb-0'))]");
+        var descriptionNode = document.DocumentNode.SelectSingleNode("//div[contains(@class, 'border-l-4') and contains(@class, 'border-neutral-400')]//p") ??
+                             document.DocumentNode.SelectSingleNode("//div[contains(@class, 'border-l-4') and contains(@class, 'border-teal-400')]//p");
 
         if (descriptionNode != null)
         {
