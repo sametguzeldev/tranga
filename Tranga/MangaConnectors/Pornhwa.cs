@@ -254,9 +254,10 @@ public class Pornhwa : MangaConnector
 
         // Get poster/cover image URL
         string posterUrl = "";
-        var posterNode = document.DocumentNode.SelectSingleNode("//img[contains(@alt, 'Comic') and contains(@alt, '" + sortName + "')]") ??
-                         document.DocumentNode.SelectSingleNode("//div[contains(@itemtype, 'ImageObject')]/img") ??
-                         document.DocumentNode.SelectSingleNode("//img[contains(@alt, '" + sortName + "')]");
+        var posterNode = document.DocumentNode.SelectSingleNode("//div[@itemprop='image' and @itemtype='https://schema.org/ImageObject']/img") ??
+                         document.DocumentNode.SelectSingleNode("//div[@itemprop='image']/img") ??
+                         document.DocumentNode.SelectSingleNode("//img[contains(@alt, 'Comic') and contains(@class, 'mx-auto')]") ??
+                         document.DocumentNode.SelectSingleNode("//img[contains(@alt, 'Comic')]");
 
         if (posterNode != null)
         {
@@ -267,6 +268,12 @@ public class Pornhwa : MangaConnector
             {
                 posterUrl = posterUrl.StartsWith("/") ? $"{BaseUrl}{posterUrl}" : $"{BaseUrl}/{posterUrl}";
             }
+
+            Log($"Found cover image URL: {posterUrl}");
+        }
+        else
+        {
+            Log("Could not find cover image");
         }
 
         // Save cover image to cache
