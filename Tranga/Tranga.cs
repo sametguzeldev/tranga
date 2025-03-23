@@ -28,6 +28,7 @@ public partial class Tranga : GlobalBase
             new Weebcentral(this),
             new Webtoons(this),
             new Pornhwa(this),
+            new Hentai20(this),
         };
         foreach(DirectoryInfo dir in new DirectoryInfo(Path.GetTempPath()).GetDirectories("trangatemp"))//Cleanup old temp folders
             dir.Delete();
