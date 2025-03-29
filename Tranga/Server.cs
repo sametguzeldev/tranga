@@ -504,7 +504,9 @@ public class Server : GlobalBase
                         SendResponse(HttpStatusCode.BadRequest, response);
                         break;
                     }
-                    AddNotificationConnector(new Ntfy(this, ntfyUrl, "tranga", ntfyAuth));
+                    // Get the topic parameter if available, otherwise default to "tranga"
+                    requestVariables.TryGetValue("ntfyTopic", out string? ntfyTopic);
+                    AddNotificationConnector(new Ntfy(this, ntfyUrl, ntfyTopic ?? "tranga", ntfyAuth));
                     SendResponse(HttpStatusCode.Accepted, response);
                 }
                 else
@@ -546,7 +548,9 @@ public class Server : GlobalBase
                         SendResponse(HttpStatusCode.BadRequest, response);
                         break;
                     }
-                    notificationConnector = new Ntfy(this, ntfyUrl, "tranga", ntfyAuth);
+                    // Get the topic parameter if available, otherwise default to "tranga"
+                    requestVariables.TryGetValue("ntfyTopic", out string? ntfyTopic);
+                    notificationConnector = new Ntfy(this, ntfyUrl, ntfyTopic ?? "tranga", ntfyAuth);
                 }
                 else
                 {
