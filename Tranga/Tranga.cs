@@ -29,6 +29,7 @@ public partial class Tranga : GlobalBase
             new Webtoons(this),
             new Pornhwa(this),
             new Hentai20(this),
+            new HandaesungReturnedFromHell(this),
         };
         foreach(DirectoryInfo dir in new DirectoryInfo(Path.GetTempPath()).GetDirectories("trangatemp"))//Cleanup old temp folders
             dir.Delete();
