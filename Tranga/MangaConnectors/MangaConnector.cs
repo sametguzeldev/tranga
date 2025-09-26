@@ -144,19 +144,119 @@ public abstract class MangaConnector : GlobalBase
     /// <param name="fullPath"></param>
     /// <param name="requestType">RequestType for Rate-Limit</param>
     /// <param name="referrer">referrer used in html request header</param>
-    private HttpStatusCode DownloadImage(string imageUrl, string fullPath, RequestType requestType, string? referrer = null)
+    /// <param name="chapter">Chapter being downloaded (for notifications)</param>
+    /// <param name="imageNumber">Image number in the chapter</param>
+    private HttpStatusCode DownloadImage(string imageUrl, string fullPath, RequestType requestType, string? referrer = null, Chapter? chapter = null, int imageNumber = 0)
     {
-        RequestResult requestResult = downloadClient.MakeRequest(imageUrl, requestType, referrer);
-        
-        if ((int)requestResult.statusCode < 200 || (int)requestResult.statusCode >= 300)
-            return requestResult.statusCode;
-        if (requestResult.result == Stream.Null)
-            return HttpStatusCode.NotFound;
+        const int maxRetries = 20;
+        const int minValidSize = 1024; // 1KB minimum - most manga images should be larger
 
-        FileStream fs = new (fullPath, FileMode.Create);
-        requestResult.result.CopyTo(fs);
-        fs.Close();
-        return requestResult.statusCode;
+        for (int attempt = 1; attempt <= maxRetries; attempt++)
+        {
+            Log($"Downloading image from {imageUrl} (attempt {attempt}/{maxRetries})");
+            RequestResult requestResult = downloadClient.MakeRequest(imageUrl, requestType, referrer);
+
+            if ((int)requestResult.statusCode < 200 || (int)requestResult.statusCode >= 300)
+            {
+                Log($"Failed to download image: {requestResult.statusCode} (attempt {attempt}/{maxRetries})");
+                if (attempt == maxRetries)
+                    return requestResult.statusCode;
+                continue;
+            }
+
+            if (requestResult.result == Stream.Null)
+            {
+                Log($"Image stream is null (attempt {attempt}/{maxRetries})");
+                if (attempt == maxRetries)
+                    return HttpStatusCode.NotFound;
+                continue;
+            }
+
+            Log($"Writing image to {fullPath}");
+            try
+            {
+                using (FileStream fs = new (fullPath, FileMode.Create))
+                {
+                    requestResult.result.CopyTo(fs);
+                    fs.Flush();
+                }
+
+                FileInfo fileInfo = new FileInfo(fullPath);
+                Log($"Image written. Size: {fileInfo.Length} bytes");
+
+                // Validate the downloaded file
+                if (fileInfo.Length == 0)
+                {
+                    Log($"WARNING: Downloaded image is 0 bytes! (attempt {attempt}/{maxRetries})");
+                    if (attempt < maxRetries)
+                    {
+                        File.Delete(fullPath); // Clean up the empty file
+                        Thread.Sleep(1000); // Wait 1 second before retry
+                        continue;
+                    }
+
+                    // Send notification for failed image after all retries
+                    if (chapter != null)
+                    {
+                        string title = "📚 Download Failed";
+                        string message = $"Image {imageNumber} failed to download after {maxRetries} attempts\n" +
+                                       $"Chapter: {chapter.parentManga.sortName} - {chapter.fileName}\n" +
+                                       $"Issue: 0-byte file\n" +
+                                       $"URL: {imageUrl}";
+                        SendNotifications(title, message);
+                    }
+
+                    return HttpStatusCode.NoContent;
+                }
+
+                if (fileInfo.Length < minValidSize)
+                {
+                    Log($"WARNING: Downloaded image is suspiciously small ({fileInfo.Length} bytes) (attempt {attempt}/{maxRetries})");
+                    if (attempt < maxRetries)
+                    {
+                        File.Delete(fullPath);
+                        Thread.Sleep(1000);
+                        continue;
+                    }
+
+                    // Send notification for suspiciously small image after all retries
+                    if (chapter != null)
+                    {
+                        string title = "⚠️ Download Warning";
+                        string message = $"Image {imageNumber} is suspiciously small ({fileInfo.Length} bytes)\n" +
+                                       $"Chapter: {chapter.parentManga.sortName} - {chapter.fileName}\n" +
+                                       $"URL: {imageUrl}";
+                        SendNotifications(title, message);
+                    }
+
+                    // Accept it on final attempt, might be a very small valid image
+                }
+
+                Log($"Image download successful. Final size: {fileInfo.Length} bytes");
+                return requestResult.statusCode;
+            }
+            catch (Exception ex)
+            {
+                Log($"Error writing image file: {ex.Message} (attempt {attempt}/{maxRetries})");
+                if (attempt == maxRetries)
+                {
+                    // Send notification for file write error after all retries
+                    if (chapter != null)
+                    {
+                        string title = "💾 File Write Error";
+                        string message = $"Image {imageNumber} failed to write to disk after {maxRetries} attempts\n" +
+                                       $"Chapter: {chapter.parentManga.sortName} - {chapter.fileName}\n" +
+                                       $"Error: {ex.Message}\n" +
+                                       $"URL: {imageUrl}";
+                        SendNotifications(title, message);
+                    }
+                    return HttpStatusCode.InternalServerError;
+                }
+                Thread.Sleep(1000);
+            }
+        }
+
+        return HttpStatusCode.InternalServerError;
     }
 
     protected HttpStatusCode DownloadChapterImages(string[] imageUrls, Chapter chapter, RequestType requestType, string? referrer = null, ProgressToken? progressToken = null)
@@ -217,11 +317,27 @@ public abstract class MangaConnector : GlobalBase
         foreach (string imageUrl in imageUrls)
         {
             string extension = imageUrl.Split('.')[^1].Split('?')[0];
-            Log($"Downloading image {chapterNum + 1:000}/{imageUrls.Length:000}"); //TODO
-            HttpStatusCode status = DownloadImage(imageUrl, Path.Join(tempFolder, $"{chapterNum++}.{extension}"), requestType, referrer);
-            Log($"{saveArchiveFilePath} {chapterNum + 1:000}/{imageUrls.Length:000} {status}");
+            Log($"Downloading image {chapterNum + 1:000}/{imageUrls.Length:000}");
+
+            string imagePath = Path.Join(tempFolder, $"{chapterNum++}.{extension}");
+            HttpStatusCode status = DownloadImage(imageUrl, imagePath, requestType, referrer, chapter, chapterNum);
+
+            Log($"{saveArchiveFilePath} {chapterNum:000}/{imageUrls.Length:000} {status}");
+
+            // Additional validation after download
+            if (File.Exists(imagePath))
+            {
+                FileInfo imageFile = new FileInfo(imagePath);
+                if (imageFile.Length == 0)
+                {
+                    Log($"CRITICAL: Image {chapterNum:000} is still 0 bytes after all retries!");
+                    // Don't fail the entire download for one bad image, but log it prominently
+                }
+            }
+
             if ((int)status < 200 || (int)status >= 300)
             {
+                Log($"Failed to download image {chapterNum:000}, aborting chapter download");
                 progressToken?.Complete();
                 return status;
             }
@@ -236,8 +352,14 @@ public abstract class MangaConnector : GlobalBase
         File.WriteAllText(Path.Join(tempFolder, "ComicInfo.xml"), chapter.GetComicInfoXmlString());
         
         Log($"Creating archive {saveArchiveFilePath}");
+        Log($"Temp folder contains {Directory.GetFiles(tempFolder).Length} files");
+
         //ZIP-it and ship-it
         ZipFile.CreateFromDirectory(tempFolder, saveArchiveFilePath);
+
+        FileInfo archiveInfo = new FileInfo(saveArchiveFilePath);
+        Log($"Archive created successfully. Size: {archiveInfo.Length} bytes");
+
         chapter.CreateChapterMarker(saveArchiveFilePath);
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
             File.SetUnixFileMode(saveArchiveFilePath, UserRead | UserWrite | UserExecute | GroupRead | GroupWrite | GroupExecute | OtherRead | OtherExecute);
