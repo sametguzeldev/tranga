@@ -200,7 +200,7 @@ public abstract class MangaConnector : GlobalBase
                     {
                         string title = "📚 Download Failed";
                         string message = $"Image {imageNumber} failed to download after {maxRetries} attempts\n" +
-                                       $"Chapter: {chapter.parentManga.sortName} - {chapter.fileName}\n" +
+                                       $"Chapter: {chapter.Value.parentManga.sortName} - {chapter.Value.fileName}\n" +
                                        $"Issue: 0-byte file\n" +
                                        $"URL: {imageUrl}";
                         SendNotifications(title, message);
@@ -224,7 +224,7 @@ public abstract class MangaConnector : GlobalBase
                     {
                         string title = "⚠️ Download Warning";
                         string message = $"Image {imageNumber} is suspiciously small ({fileInfo.Length} bytes)\n" +
-                                       $"Chapter: {chapter.parentManga.sortName} - {chapter.fileName}\n" +
+                                       $"Chapter: {chapter.Value.parentManga.sortName} - {chapter.Value.fileName}\n" +
                                        $"URL: {imageUrl}";
                         SendNotifications(title, message);
                     }
@@ -245,7 +245,7 @@ public abstract class MangaConnector : GlobalBase
                     {
                         string title = "💾 File Write Error";
                         string message = $"Image {imageNumber} failed to write to disk after {maxRetries} attempts\n" +
-                                       $"Chapter: {chapter.parentManga.sortName} - {chapter.fileName}\n" +
+                                       $"Chapter: {chapter.Value.parentManga.sortName} - {chapter.Value.fileName}\n" +
                                        $"Error: {ex.Message}\n" +
                                        $"URL: {imageUrl}";
                         SendNotifications(title, message);
