@@ -77,7 +77,11 @@ internal class ChromiumDownloadClient : DownloadClient
         IResponse response;
         try
         {
-            response = page.GoToAsync(url, WaitUntilNavigation.Networkidle0).Result;
+            response = page.GoToAsync(url, new NavigationOptions
+            {
+                WaitUntil = new[] { WaitUntilNavigation.Networkidle0 },
+                Timeout = TrangaSettings.ChromiumPageTimeoutMs
+            }).Result;
             Log($"Page loaded. {url}");
         }
         catch (Exception e)
